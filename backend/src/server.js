@@ -15,7 +15,6 @@ import { errorHandler } from "./middleware/errorHandler.js";
 dotenv.config();
 
 const app = express();
-
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
@@ -23,6 +22,10 @@ app.use(morgan("dev"));
 
 app.get("/", (req, res) => {
   res.json({ message: "Backend is running 🚀" });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, service: "nasa-mission-control-backend" });
 });
 
 app.use("/api/apod", apodRoutes);
@@ -38,5 +41,5 @@ app.use(errorHandler);
 const PORT = Number(process.env.PORT) || 5001;
 
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

@@ -9,16 +9,66 @@ import { fmtDate, readingTimeMinutes, wordsCount } from "../lib/format.js";
 
 function getIsoOffset(days) {
   const d = new Date();
-  d.setDate(d.getDate() + days);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const API_BASES = API_BASE_URL ? [API_BASE_URL, "/api"] : ["/api"];
+
+function buildApiError(payload, status) {
+  if (payload?.message) return payload.message;
+  if (payload?.details?.msg) return payload.details.msg;
+  if (payload?.details?.error?.message) return payload.details.error.message;
+  if (payload?.error?.message) return payload.error.message;
+  if (status === 0) return "Backend is unreachable. Start the backend server and retry.";
+  return `Failed to load APOD data (status ${status}).`;
+}
+
+function parseJsonSafe(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+async function requestFromAnyBase(pathWithQuery) {
+  let lastError = null;
+  let firstMeaningfulError = null;
+  for (const base of API_BASES) {
+    const url = `${base}${pathWithQuery}`;
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      const json = parseJsonSafe(text);
+      if (!res.ok) throw new Error(buildApiError(json, res.status));
+      return json;
+    } catch (err) {
+      lastError = err;
+      const msg = String(err?.message || "");
+      const looksInformative =
+        msg.includes("NASA") ||
+        msg.includes("status") ||
+        msg.includes("rate limit") ||
+        msg.includes("Invalid") ||
+        msg.includes("Failed to fetch APOD");
+      if (!firstMeaningfulError && looksInformative) {
+        firstMeaningfulError = err;
+      }
+    }
+  }
+  throw firstMeaningfulError || lastError || new Error("Backend is unreachable. Start backend and retry.");
 }
 
 export default function ApodPage() {
   const prevModeRef = useRef(null);
   const [mode, setMode] = useState("single");
-  const [date, setDate] = useState(getIsoOffset(0));
-  const [startDate, setStartDate] = useState(getIsoOffset(-6));
-  const [endDate, setEndDate] = useState(getIsoOffset(0));
+  const [date, setDate] = useState(getIsoOffset(-1));
+  const [startDate, setStartDate] = useState(getIsoOffset(-7));
+  const [endDate, setEndDate] = useState(getIsoOffset(-1));
 
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
@@ -31,16 +81,17 @@ export default function ApodPage() {
     try {
       setLoading(true);
       setErr("");
-      let url = `${import.meta.env.VITE_API_BASE_URL}/apod?thumbs=true`;
+      let query = "/apod?thumbs=true";
       if (mode === "single") {
-        url += `&date=${date}`;
+        if (!date) throw new Error("Please choose a valid date.");
+        query += `&date=${encodeURIComponent(date)}`;
       } else {
-        url += `&startDate=${startDate}&endDate=${endDate}`;
+        if (!startDate || !endDate) throw new Error("Please choose both start and end dates.");
+        if (startDate > endDate) throw new Error("Start date cannot be after end date.");
+        query += `&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
       }
 
-      const res = await fetch(url);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || "Failed to load APOD");
+      const json = await requestFromAnyBase(query);
       setData(json);
       if (mode === "range") {
         setActiveRangeDate("");
@@ -48,7 +99,8 @@ export default function ApodPage() {
         setActiveMediaType("all");
       }
     } catch (e) {
-      setErr(e.message);
+      const raw = e?.message || "Failed to load APOD data.";
+      setErr(raw === "Failed to fetch" ? "Backend is unreachable. Start backend server on port 5001 and retry." : raw);
       if (initial) setData(null);
     } finally {
       setLoading(false);
