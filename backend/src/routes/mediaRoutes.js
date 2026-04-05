@@ -75,4 +75,34 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/asset", async (req, res) => {
+  try {
+    const nasaId = String(req.query.nasaId || "").trim();
+    if (!nasaId) {
+      return res.status(400).json({ message: "nasaId is required" });
+    }
+
+    const response = await axios.get(`https://images-api.nasa.gov/asset/${encodeURIComponent(nasaId)}`, {
+      timeout: 15000,
+    });
+
+    const items = response.data?.collection?.items || [];
+    const hrefs = items.map((item) => item?.href).filter(Boolean);
+    const videoUrl = hrefs.find((href) => /\.(mp4|webm|mov)(\?|$)/i.test(href)) || null;
+    const imageUrl = hrefs.find((href) => /\.(jpg|jpeg|png|webp)(\?|$)/i.test(href)) || null;
+    const captionUrl = hrefs.find((href) => /\.(vtt|srt)(\?|$)/i.test(href)) || null;
+
+    return res.json({
+      nasaId,
+      totalAssets: hrefs.length,
+      imageUrl,
+      videoUrl,
+      captionUrl,
+      assets: hrefs,
+    });
+  } catch (e) {
+    return res.status(500).json({ message: "Failed to fetch NASA asset details" });
+  }
+});
+
 export default router;

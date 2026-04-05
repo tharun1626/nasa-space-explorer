@@ -19,6 +19,10 @@ export default function MediaPage() {
   const [activeYear, setActiveYear] = useState("");
   const [activeKeyword, setActiveKeyword] = useState("");
   const [activeCenter, setActiveCenter] = useState("");
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [assetData, setAssetData] = useState(null);
+  const [assetLoading, setAssetLoading] = useState(false);
+  const [detailErr, setDetailErr] = useState("");
 
   const search = useCallback(async (override) => {
     const query = (override ?? q).trim();
@@ -79,6 +83,34 @@ export default function MediaPage() {
       .filter((x) => x.date_created)
       .sort((a, b) => (a.date_created > b.date_created ? -1 : 1))[0];
   }, [results]);
+
+  const fetchAssetDetails = useCallback(async (nasaId) => {
+    if (!nasaId) return null;
+    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/media/asset?nasaId=${encodeURIComponent(nasaId)}`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message || "Failed to fetch asset details");
+    return json;
+  }, []);
+
+  const openDetails = useCallback(async (item) => {
+    setSelectedItem(item);
+    setAssetData(null);
+    setDetailErr("");
+
+    setAssetLoading(true);
+
+    try {
+      const asset = await fetchAssetDetails(item?.nasa_id).catch(() => null);
+      setAssetData(asset);
+      if (!asset) {
+        setDetailErr("Could not load extra asset analytics right now.");
+      }
+    } catch (e) {
+      setDetailErr(e?.message || "Failed to load additional analytics");
+    } finally {
+      setAssetLoading(false);
+    }
+  }, [fetchAssetDetails]);
 
   return (
     <div className="space-y-6">
@@ -182,7 +214,7 @@ export default function MediaPage() {
             <div className="media-results-grid">
               {filteredResults.map((item, idx) => (
                 <TiltCard key={`${item.nasa_id || item.title}-${idx}`} className="media-results-item">
-                  <article className="media-card h-full w-full text-left">
+                  <button type="button" className="media-card h-full w-full text-left" onClick={() => openDetails(item)}>
                     <div className="media-thumb-wrap">
                       {item.image ? (
                         <img src={item.image} alt={item.title} className="media-thumb" loading="lazy" />
@@ -195,7 +227,7 @@ export default function MediaPage() {
                       <p className="text-xs text-slate-300/70 mt-1">{fmtDate(item.date_created)}</p>
                       <p className="text-sm text-slate-300/85 mt-2 clamp-3">{item.description || "No description"}</p>
                     </div>
-                  </article>
+                  </button>
                 </TiltCard>
               ))}
             </div>
@@ -206,6 +238,81 @@ export default function MediaPage() {
             ) : null}
           </section>
         </>
+      ) : null}
+
+      {selectedItem ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 md:p-8 overflow-auto">
+          <div className="max-w-6xl mx-auto panel p-4 md:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="chart-title">Asset Intelligence View</h3>
+              <button type="button" className="chip" onClick={() => setSelectedItem(null)}>
+                Close
+              </button>
+            </div>
+
+            {detailErr ? <div className="panel border-red-300/25 bg-red-500/10 p-3 mt-3 text-red-100">{detailErr}</div> : null}
+
+            <div className="mt-4 grid lg:grid-cols-[1.1fr_0.9fr] gap-4">
+              <div className="panel p-3">
+                {assetData?.videoUrl ? (
+                  <video className="w-full rounded-lg" controls src={assetData.videoUrl} />
+                ) : (
+                  <img
+                    src={assetData?.imageUrl || selectedItem.image}
+                    alt={selectedItem.title}
+                    className="w-full max-h-[560px] object-contain rounded-lg bg-slate-950"
+                  />
+                )}
+              </div>
+
+              <div className="panel p-4">
+                <p className="eyebrow">Selected Asset</p>
+                <h4 className="font-heading text-2xl mt-2">{selectedItem.title || "Untitled"}</h4>
+                <p className="subtitle mt-2">{fmtDate(selectedItem.date_created)}</p>
+                <p className="subtitle mt-3">{selectedItem.description || "No description available."}</p>
+
+                <div className="mt-4 grid sm:grid-cols-2 gap-2">
+                  <div className="mini-stat"><span>NASA ID</span><strong>{selectedItem.nasa_id || "-"}</strong></div>
+                  <div className="mini-stat"><span>Center</span><strong>{selectedItem.center || "-"}</strong></div>
+                  <div className="mini-stat"><span>Location</span><strong>{selectedItem.location || "-"}</strong></div>
+                  <div className="mini-stat"><span>Photographer</span><strong>{selectedItem.photographer || "-"}</strong></div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <a className="chip chip-active" href={selectedItem.nasa_url} target="_blank" rel="noreferrer">
+                    Open NASA Asset
+                  </a>
+                  {assetData?.videoUrl ? (
+                    <a className="chip" href={assetData.videoUrl} target="_blank" rel="noreferrer">
+                      Open Video
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 panel p-4">
+              <h4 className="chart-title">Related NASA Services</h4>
+              <p className="subtitle mt-2">
+                Near Earth Object Web Service (NeoWs) is available in the dedicated NEO page with full risk analytics.
+              </p>
+            </div>
+
+            <div className="mt-4 panel p-4">
+              <h4 className="chart-title">Keywords</h4>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(selectedItem.keywords || []).length ? (
+                  (selectedItem.keywords || []).slice(0, 20).map((kw) => (
+                    <span key={kw} className="pill pill-safe">{kw}</span>
+                  ))
+                ) : (
+                  <p className="subtitle">No keyword metadata available.</p>
+                )}
+              </div>
+              {assetLoading ? <p className="subtitle mt-3">Loading extra data...</p> : null}
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

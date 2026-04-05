@@ -4,6 +4,7 @@ import ApodPage from "./pages/ApodPage.jsx";
 import NeoPage from "./pages/NeoPage.jsx";
 import MediaPage from "./pages/MediaPage.jsx";
 import EarthPage from "./pages/EarthPage.jsx";
+import MarsPage from "./pages/MarsPage.jsx";
 
 const linkClass = ({ isActive }) =>
   `nav-link ${isActive ? "nav-link-active" : "nav-link-idle"}`;
@@ -34,6 +35,9 @@ export default function App() {
             <NavLink to="/neo" className={linkClass}>
               NEO
             </NavLink>
+            <NavLink to="/mars" className={linkClass}>
+              Mars
+            </NavLink>
             <NavLink to="/media" className={linkClass}>
               Archive
             </NavLink>
@@ -49,6 +53,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/apod" element={<ApodPage />} />
           <Route path="/neo" element={<NeoPage />} />
+          <Route path="/mars" element={<MarsPage />} />
           <Route path="/media" element={<MediaPage />} />
           <Route path="/earth" element={<EarthPage />} />
         </Routes>

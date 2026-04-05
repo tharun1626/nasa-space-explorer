@@ -26,10 +26,17 @@ const modules = [
     href: "/earth",
     tag: "Earth",
   },
+  {
+    title: "Mars Rover Feed",
+    description: "Explore Mars rover captures by rover, camera, and date with visual inspection.",
+    href: "/mars",
+    tag: "Mars",
+  },
 ];
 
 const engineeringHighlights = [
-  "Real NASA API integrations across APOD, NEO, EPIC, and Media Archive routes.",
+  "Real NASA API integrations across APOD, Mars Rover Photos, NEO, EPIC, and NASA Library routes.",
+  "Mars Rover Photos endpoint connected in backend for rover-driven exploration flows.",
   "Interactive analytics dashboards with drill-down filtering and visual exploration.",
   "Production-ready React architecture using memoized selectors and reusable UI components.",
   "Error states, loading skeletons, and resilient rendering patterns for smoother UX.",
@@ -38,8 +45,16 @@ const engineeringHighlights = [
 const hiringSignals = [
   { label: "Frontend Stack", value: "React + Recharts + Tailwind" },
   { label: "Backend Stack", value: "Node + Express API layer" },
-  { label: "Data Domains", value: "Astronomy, NEO risk, Earth imagery, media intelligence" },
+  { label: "Data Domains", value: "Astronomy, Mars, NEO risk, Earth imagery, media intelligence" },
   { label: "UX Standard", value: "Clean dashboard flows with filter-first interaction" },
+];
+
+const missionApis = [
+  "Astronomy Picture of the Day (APOD)",
+  "Mars Rover Photos",
+  "Earth Polychromatic Imaging Camera (EPIC)",
+  "Near Earth Object Web Service (NeoWs)",
+  "NASA Image and Video Library",
 ];
 
 export default function HomePage() {
@@ -55,13 +70,13 @@ export default function HomePage() {
       <section className="grid md:grid-cols-3 gap-4">
         <article className="panel p-4 reveal-up">
           <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Modules</p>
-          <p className="stat-value">4</p>
+          <p className="stat-value">{modules.length}</p>
           <p className="stat-hint">Integrated intelligence sections</p>
         </article>
         <article className="panel p-4 reveal-up">
           <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Data Sources</p>
           <p className="stat-value text-emerald-300">NASA APIs</p>
-          <p className="stat-hint">APOD, NEO, EPIC, Media Archive</p>
+          <p className="stat-hint">APOD, Mars, NEO, EPIC, Media Library</p>
         </article>
         <article className="panel p-4 reveal-up">
           <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Interaction Model</p>
@@ -104,6 +119,18 @@ export default function HomePage() {
             ))}
           </div>
         </article>
+      </section>
+
+      <section className="panel p-5 reveal-up">
+        <h3 className="chart-title">Mission APIs Covered</h3>
+        <div className="mt-3 grid md:grid-cols-2 xl:grid-cols-3 gap-2">
+          {missionApis.map((api) => (
+            <div key={api} className="mini-stat">
+              <span>NASA Endpoint</span>
+              <strong>{api}</strong>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );
