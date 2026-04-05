@@ -15,7 +15,7 @@ function getIsoOffset(days) {
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
-const API_BASES = API_BASE_URL ? [API_BASE_URL, "/api"] : ["/api"];
+const API_BASES = API_BASE_URL ? [API_BASE_URL, ""] : [""];
 
 function buildApiError(payload, status) {
   if (payload?.message) return payload.message;
@@ -81,7 +81,7 @@ export default function ApodPage() {
     try {
       setLoading(true);
       setErr("");
-      let query = "/apod?thumbs=true";
+      let query = "/api/apod?thumbs=true";
       if (mode === "single") {
         if (!date) throw new Error("Please choose a valid date.");
         query += `&date=${encodeURIComponent(date)}`;

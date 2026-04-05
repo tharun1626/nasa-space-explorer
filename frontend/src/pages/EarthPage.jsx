@@ -26,11 +26,11 @@ export default function EarthPage() {
       setFallbackNotice("");
       setLoading(true);
 
-      let url = `${import.meta.env.VITE_API_BASE_URL}/earth`;
+      let url = `${import.meta.env.VITE_API_BASE_URL}/api/earth`;
       if (mode === "imagery") {
-        url = `${import.meta.env.VITE_API_BASE_URL}/earth?mode=imagery&date=${date}&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&dim=${encodeURIComponent(dim)}`;
+        url = `${import.meta.env.VITE_API_BASE_URL}/api/earth?mode=imagery&date=${date}&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&dim=${encodeURIComponent(dim)}`;
       } else if (!forceLatest) {
-        url = `${import.meta.env.VITE_API_BASE_URL}/earth?date=${date}`;
+        url = `${import.meta.env.VITE_API_BASE_URL}/api/earth?date=${date}`;
       }
 
       const res = await fetch(url);
@@ -42,7 +42,7 @@ export default function EarthPage() {
           !forceLatest &&
           [400, 404].includes(res.status)
         ) {
-          const latestRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/earth`);
+          const latestRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/earth`);
           const latestJson = await latestRes.json();
           if (latestRes.ok && (latestJson?.count || 0) > 0) {
             setData(latestJson);
@@ -64,7 +64,7 @@ export default function EarthPage() {
       }
 
       if (mode === "epic" && !forceLatest && (json?.count || 0) === 0) {
-        const latestRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/earth`);
+        const latestRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/earth`);
         const latestJson = await latestRes.json();
         if (latestRes.ok && (latestJson?.count || 0) > 0) {
           setData(latestJson);

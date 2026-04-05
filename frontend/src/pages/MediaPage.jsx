@@ -31,7 +31,7 @@ export default function MediaPage() {
       const params = new URLSearchParams({ q: query, limit: "60" });
       if (date) params.set("date", date);
 
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/media?${params.toString()}`);
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/media?${params.toString()}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.message || "Failed to search media");
       setData(json);

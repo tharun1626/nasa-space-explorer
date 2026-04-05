@@ -45,7 +45,7 @@ export default function NeoPage() {
     try {
       setLoading(true);
       setErr("");
-      const url = `${import.meta.env.VITE_API_BASE_URL}/neo?startDate=${startDate}&endDate=${endDate}`;
+      const url = `${import.meta.env.VITE_API_BASE_URL}/api/neo?startDate=${startDate}&endDate=${endDate}`;
       const res = await fetch(url);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.message || "Failed to fetch NEO data");
