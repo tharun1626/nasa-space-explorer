@@ -2,9 +2,9 @@ import { Routes, Route, NavLink } from "react-router-dom";
 import HomePage from "./pages/HomePage.jsx";
 import ApodPage from "./pages/ApodPage.jsx";
 import NeoPage from "./pages/NeoPage.jsx";
+import MarsPage from "./pages/MarsPage.jsx";
 import MediaPage from "./pages/MediaPage.jsx";
 import EarthPage from "./pages/EarthPage.jsx";
-import MarsPage from "./pages/MarsPage.jsx";
 
 const linkClass = ({ isActive }) =>
   `nav-link ${isActive ? "nav-link-active" : "nav-link-idle"}`;
