@@ -7,6 +7,43 @@ import TiltCard from "../components/ui/TiltCard.jsx";
 import { fmtDate } from "../lib/format.js";
 
 const quickQueries = ["moon", "saturn", "apollo", "james webb", "nebula", "voyager"];
+const API_BASE_ENV = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const API_BASES = [
+  API_BASE_ENV,
+  "https://nasa-space-explorer-backend-o3fv.onrender.com",
+  "",
+].filter(Boolean);
+
+function parseJsonSafe(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchFromAnyBase(pathWithQuery) {
+  let lastError = null;
+  for (const base of API_BASES) {
+    const url = `${base}${pathWithQuery}`;
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      const json = parseJsonSafe(text);
+      if (!res.ok) {
+        throw new Error(json?.message || `Request failed (${res.status})`);
+      }
+      if (!json) {
+        throw new Error("Backend returned a non-JSON response.");
+      }
+      return json;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Load failed");
+}
 
 export default function MediaPage() {
   const didInit = useRef(false);
@@ -35,9 +72,7 @@ export default function MediaPage() {
       const params = new URLSearchParams({ q: query, limit: "60" });
       if (date) params.set("date", date);
 
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/media?${params.toString()}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || "Failed to search media");
+      const json = await fetchFromAnyBase(`/api/media?${params.toString()}`);
       setData(json);
       setQ(query);
       setActiveYear("");
@@ -86,10 +121,7 @@ export default function MediaPage() {
 
   const fetchAssetDetails = useCallback(async (nasaId) => {
     if (!nasaId) return null;
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/media/asset?nasaId=${encodeURIComponent(nasaId)}`);
-    const json = await res.json();
-    if (!res.ok) throw new Error(json?.message || "Failed to fetch asset details");
-    return json;
+    return await fetchFromAnyBase(`/api/media/asset?nasaId=${encodeURIComponent(nasaId)}`);
   }, []);
 
   const openDetails = useCallback(async (item) => {

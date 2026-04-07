@@ -116,7 +116,7 @@ export default function MarsPage() {
         return;
       }
     } catch {
-      // keep final user-facing error below
+      setSource("Live NASA rover feed");
     }
 
     setPhotos([]);

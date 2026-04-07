@@ -428,6 +428,20 @@ body {
   box-shadow: 0 0 0 3px rgba(88, 148, 221, 0.22);
 }
 
+input[type="date"].field-input {
+  color: #eaf4ff;
+  color-scheme: dark;
+}
+
+input[type="date"].field-input::-webkit-datetime-edit {
+  color: #eaf4ff;
+}
+
+input[type="date"].field-input::-webkit-calendar-picker-indicator {
+  opacity: 0.92;
+  filter: invert(95%) sepia(12%) saturate(321%) hue-rotate(173deg) brightness(105%) contrast(101%);
+}
+
 .chip {
   border-radius: 999px;
   border: 1px solid rgba(140, 178, 221, 0.32);
