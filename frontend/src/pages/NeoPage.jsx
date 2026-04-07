@@ -47,8 +47,26 @@ export default function NeoPage() {
       setErr("");
       const url = `${import.meta.env.VITE_API_BASE_URL}/api/neo?startDate=${startDate}&endDate=${endDate}`;
       const res = await fetch(url);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || "Failed to fetch NEO data");
+      const text = await res.text();
+      let json = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok) {
+        const raw = json?.message || "Failed to fetch NEO data";
+        const message = String(raw);
+        if (message.toLowerCase().includes("epic")) {
+          throw new Error(
+            "Backend route mismatch detected: /api/neo is returning EPIC responses. Restart/redeploy backend with latest code."
+          );
+        }
+        throw new Error(message);
+      }
+      if (!json?.near_earth_objects) {
+        throw new Error("Invalid NEO response format from backend.");
+      }
       setData(json);
       setActiveDate("");
       setActiveHazard("all");

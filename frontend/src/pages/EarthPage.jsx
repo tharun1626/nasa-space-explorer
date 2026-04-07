@@ -37,21 +37,31 @@ export default function EarthPage() {
       const json = await res.json();
 
       if (!res.ok) {
-        if (
-          mode === "epic" &&
-          !forceLatest &&
-          [400, 404].includes(res.status)
-        ) {
+        if (mode === "epic") {
           const latestRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/earth`);
           const latestJson = await latestRes.json();
           if (latestRes.ok && (latestJson?.count || 0) > 0) {
             setData(latestJson);
             setDate((latestJson?.date || "").slice(0, 10) || date);
             setFallbackNotice(
-              `No EPIC frames for ${fmtDate(date)}. Showing latest available frames instead.`
+              `EPIC request for ${fmtDate(date)} failed. Showing latest available frames instead.`
             );
             return;
           }
+
+          setData({
+            collection: "natural",
+            date: date || null,
+            requested_date: date || null,
+            count: 0,
+            results: [],
+            fallback: true,
+            fallback_reason: json?.message || "EPIC feed unavailable",
+          });
+          setFallbackNotice(
+            `EPIC is temporarily unavailable for ${fmtDate(date)}. Please retry in a few minutes.`
+          );
+          return;
         }
 
         const nasaDetails =

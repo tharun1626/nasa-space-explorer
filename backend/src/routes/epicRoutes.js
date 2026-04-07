@@ -3,6 +3,7 @@ import axios from "axios";
 
 const router = express.Router();
 const BASE_TIMEOUT_MS = Number(process.env.NASA_TIMEOUT_MS || 30000);
+const epicCache = new Map();
 
 async function nasaGetWithRetry(url, options = {}, retries = 2) {
   let lastError;
@@ -26,7 +27,91 @@ async function nasaGetWithRetry(url, options = {}, retries = 2) {
 
 function buildEpicImageUrl({ image, date, collection = "natural" }) {
   const [yyyy, mm, dd] = date.slice(0, 10).split("-");
-  return `https://epic.gsfc.nasa.gov/archive/${collection}/${yyyy}/${mm}/${dd}/png/${image}.png`;
+  return `https://api.nasa.gov/EPIC/archive/${collection}/${yyyy}/${mm}/${dd}/png/${image}.png`;
+}
+
+function epicCacheKey({ date, collection }) {
+  return `${collection}:${date || "latest"}`;
+}
+
+function emptyEpicPayload({ date, collection, reason }) {
+  return {
+    collection,
+    date: date || null,
+    requested_date: date || null,
+    count: 0,
+    results: [],
+    fallback: true,
+    fallback_reason: reason,
+  };
+}
+
+async function fetchLibraryEarthFallback({ date, collection }) {
+  const query = date ? `earth ${date}` : "earth dscovr epic";
+  const response = await nasaGetWithRetry("https://images-api.nasa.gov/search", {
+    params: {
+      q: query,
+      media_type: "image",
+      page: 1,
+    },
+    validateStatus: () => true,
+  });
+
+  if (response.status >= 400) return null;
+
+  const items = response.data?.collection?.items || [];
+  const mapped = items
+    .map((item, idx) => {
+      const data = item?.data?.[0] || {};
+      const link = item?.links?.[0] || {};
+      if (!link?.href) return null;
+      const fallbackDate = (data.date_created || date || new Date().toISOString()).slice(0, 10);
+      return {
+        identifier: data.nasa_id || `fallback-${idx}`,
+        caption: data.title || "Earth fallback frame",
+        date: fallbackDate,
+        image: data.nasa_id || `fallback-${idx}`,
+        centroid_coordinates: null,
+        dscovr_j2000_position: null,
+        lunar_j2000_position: null,
+        sun_j2000_position: null,
+        image_url: link.href,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 24);
+
+  if (!mapped.length) return null;
+
+  return {
+    collection,
+    date: mapped[0]?.date || date || null,
+    requested_date: date || null,
+    count: mapped.length,
+    results: mapped,
+    fallback: true,
+    fallback_reason: "EPIC upstream unavailable. Showing NASA Earth archive imagery.",
+  };
+}
+
+async function tryEpicFetchVariants({ date, collection, apiKey }) {
+  const variants = [
+    `https://api.nasa.gov/EPIC/api/${collection}${date ? `/date/${date}` : ""}`,
+    `https://epic.gsfc.nasa.gov/api/${collection}${date ? `/date/${date}` : ""}`,
+  ];
+
+  let lastResponse = null;
+  for (const url of variants) {
+    const response = await nasaGetWithRetry(url, {
+      params: { api_key: apiKey },
+      validateStatus: () => true,
+    });
+    lastResponse = response;
+    if (response.status < 400) {
+      return response;
+    }
+  }
+  return lastResponse;
 }
 
 async function fetchEarthImagery(req, res, apiKey) {
@@ -62,21 +147,45 @@ async function fetchEarthImagery(req, res, apiKey) {
 async function fetchEpicFeed(req, res, apiKey) {
   const date = req.query.date;
   const collection = req.query.collection === "enhanced" ? "enhanced" : "natural";
-  const base = `https://epic.gsfc.nasa.gov/api/${collection}`;
-  const url = date ? `${base}/date/${date}` : base;
+  const key = epicCacheKey({ date, collection });
+  const latestKey = epicCacheKey({ date: null, collection });
 
-  const response = await nasaGetWithRetry(url, {
-    params: { api_key: apiKey },
-    validateStatus: () => true,
-  });
+  let response = await tryEpicFetchVariants({ date, collection, apiKey });
+
+  if (response.status < 400 && date) {
+    const isEmpty = Array.isArray(response.data) && response.data.length === 0;
+    if (isEmpty) {
+      const latestResponse = await tryEpicFetchVariants({ date: null, collection, apiKey });
+      if (latestResponse?.status < 400 && Array.isArray(latestResponse.data) && latestResponse.data.length > 0) {
+        response = latestResponse;
+      }
+    }
+  }
 
   if (response.status >= 400) {
-    return res.status(response.status).json({
-      message: "Failed to fetch EPIC feed",
-      nasa_status: response.status,
-      details: response.data,
-      used_params: { date, collection },
-    });
+    const cached = epicCache.get(key) || epicCache.get(latestKey);
+    if (cached) {
+      return res.json({
+        ...cached,
+        fallback: true,
+        fallback_reason: "Serving cached EPIC feed due to upstream NASA failure.",
+      });
+    }
+
+    const libraryFallback = await fetchLibraryEarthFallback({ date, collection });
+    if (libraryFallback) {
+      epicCache.set(key, libraryFallback);
+      epicCache.set(latestKey, libraryFallback);
+      return res.json(libraryFallback);
+    }
+
+    return res.json(
+      emptyEpicPayload({
+        date,
+        collection,
+        reason: "EPIC upstream unavailable and no cached/library fallback found.",
+      })
+    );
   }
 
   const items = Array.isArray(response.data) ? response.data : [];
@@ -93,15 +202,21 @@ async function fetchEpicFeed(req, res, apiKey) {
       image: item.image,
       date: item.date,
       collection,
-    }),
+    }) + `?api_key=${encodeURIComponent(apiKey)}`,
   }));
 
-  return res.json({
+  const payload = {
     collection,
-    date: date || mapped[0]?.date?.slice(0, 10) || null,
+    date: mapped[0]?.date?.slice(0, 10) || date || null,
+    requested_date: date || null,
     count: mapped.length,
     results: mapped,
-  });
+  };
+
+  epicCache.set(key, payload);
+  epicCache.set(latestKey, payload);
+
+  return res.json(payload);
 }
 
 router.get("/", async (req, res) => {
@@ -122,13 +237,35 @@ router.get("/", async (req, res) => {
     const isTimeout =
       error?.code === "ECONNABORTED" ||
       String(error?.message || "").toLowerCase().includes("timeout");
-    return res.status(status).json({
-      message: isTimeout
-        ? "Failed to fetch Earth/EPIC data (NASA timeout, please retry)"
-        : "Failed to fetch Earth/EPIC data",
-      nasa_status: status,
-      details,
+    const fallback = epicCache.get(epicCacheKey({ date: req.query.date, collection: req.query.collection === "enhanced" ? "enhanced" : "natural" }))
+      || epicCache.get(epicCacheKey({ date: null, collection: req.query.collection === "enhanced" ? "enhanced" : "natural" }));
+    if (fallback) {
+      return res.json({
+        ...fallback,
+        fallback: true,
+        fallback_reason: isTimeout
+          ? "Serving cached EPIC feed because NASA request timed out."
+          : "Serving cached EPIC feed due to upstream NASA error.",
+      });
+    }
+
+    const libraryFallback = await fetchLibraryEarthFallback({
+      date: req.query.date,
+      collection: req.query.collection === "enhanced" ? "enhanced" : "natural",
     });
+    if (libraryFallback) {
+      return res.json(libraryFallback);
+    }
+
+    return res.json(
+      emptyEpicPayload({
+        date: req.query.date,
+        collection: req.query.collection === "enhanced" ? "enhanced" : "natural",
+        reason: isTimeout
+          ? "NASA EPIC timeout; returning safe empty payload."
+          : "NASA EPIC error; returning safe empty payload.",
+      })
+    );
   }
 });
 
