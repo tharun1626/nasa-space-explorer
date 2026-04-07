@@ -66,9 +66,9 @@ async function requestFromAnyBase(pathWithQuery) {
 export default function ApodPage() {
   const prevModeRef = useRef(null);
   const [mode, setMode] = useState("single");
-  const [date, setDate] = useState(getIsoOffset(-1));
+  const [date, setDate] = useState(getIsoOffset(0));
   const [startDate, setStartDate] = useState(getIsoOffset(-7));
-  const [endDate, setEndDate] = useState(getIsoOffset(-1));
+  const [endDate, setEndDate] = useState(getIsoOffset(0));
 
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
@@ -201,12 +201,12 @@ export default function ApodPage() {
               <article className="panel overflow-hidden reveal-up">
                 {current.media_type === "image" ? (
                   <img src={current.hdurl || current.url} alt={current.title} className="w-full max-h-[560px] object-cover" loading="eager" />
+                ) : current.thumbnail_url ? (
+                  <a href={current.url} target="_blank" rel="noreferrer" className="block">
+                    <img src={current.thumbnail_url} alt={current.title} className="w-full max-h-[560px] object-cover" loading="eager" />
+                  </a>
                 ) : (
-                  <div className="p-6">
-                    <a className="button-primary" href={current.url} target="_blank" rel="noreferrer">
-                      Open APOD Media
-                    </a>
-                  </div>
+                  <div className="p-6 subtitle">Media preview is unavailable for this APOD entry.</div>
                 )}
               </article>
             </TiltCard>
