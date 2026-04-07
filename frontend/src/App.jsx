@@ -20,10 +20,10 @@ export default function App() {
 
       <header className="sticky top-0 z-40 border-b border-cyan-200/10 backdrop-blur-xl bg-slate-950/60">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
+          <a href="/" className="block">
             <p className="eyebrow">Space Intelligence Suite</p>
             <p className="font-heading text-xl tracking-wide">NASA Data Explorer Pro</p>
-          </div>
+          </a>
 
           <nav className="flex flex-wrap gap-2">
             <NavLink to="/" className={linkClass} end>

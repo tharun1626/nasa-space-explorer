@@ -11,6 +11,41 @@ function isoDateOffset(days) {
   return d.toISOString().slice(0, 10);
 }
 
+function toDateUtc(iso) {
+  return new Date(`${iso}T00:00:00Z`);
+}
+
+function toIso(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(date, days) {
+  const copy = new Date(date);
+  copy.setUTCDate(copy.getUTCDate() + days);
+  return copy;
+}
+
+function mergeNeoPayloads(payloads) {
+  const nearEarthObjects = {};
+
+  for (const payload of payloads) {
+    const byDate = payload?.near_earth_objects || {};
+    for (const [date, list] of Object.entries(byDate)) {
+      const existing = nearEarthObjects[date] || [];
+      const dedupe = new Map(existing.map((item) => [item.id, item]));
+      for (const neo of list) dedupe.set(neo.id, neo);
+      nearEarthObjects[date] = [...dedupe.values()];
+    }
+  }
+
+  const elementCount = Object.values(nearEarthObjects).reduce((sum, list) => sum + list.length, 0);
+  return {
+    links: payloads[0]?.links || {},
+    element_count: elementCount,
+    near_earth_objects: nearEarthObjects,
+  };
+}
+
 export default function NeoPage() {
   const [startDate, setStartDate] = useState(isoDateOffset(-3));
   const [endDate, setEndDate] = useState(isoDateOffset(0));
@@ -45,29 +80,51 @@ export default function NeoPage() {
     try {
       setLoading(true);
       setErr("");
-      const url = `${import.meta.env.VITE_API_BASE_URL}/api/neo?startDate=${startDate}&endDate=${endDate}`;
-      const res = await fetch(url);
-      const text = await res.text();
-      let json = null;
-      try {
-        json = text ? JSON.parse(text) : null;
-      } catch {
-        json = null;
+      if (!startDate || !endDate) {
+        throw new Error("Please select both start and end dates.");
       }
-      if (!res.ok) {
-        const raw = json?.message || "Failed to fetch NEO data";
-        const message = String(raw);
-        if (message.toLowerCase().includes("epic")) {
-          throw new Error(
-            "Backend route mismatch detected: /api/neo is returning EPIC responses. Restart/redeploy backend with latest code."
-          );
+      if (startDate > endDate) {
+        throw new Error("Start date cannot be after end date.");
+      }
+
+      const start = toDateUtc(startDate);
+      const end = toDateUtc(endDate);
+      const chunkPayloads = [];
+
+      let cursor = start;
+      while (cursor <= end) {
+        const chunkEnd = addDays(cursor, 6) <= end ? addDays(cursor, 6) : end;
+        const url = `${import.meta.env.VITE_API_BASE_URL}/api/neo?startDate=${toIso(cursor)}&endDate=${toIso(chunkEnd)}`;
+        const res = await fetch(url);
+        const text = await res.text();
+        let json = null;
+        try {
+          json = text ? JSON.parse(text) : null;
+        } catch {
+          json = null;
         }
-        throw new Error(message);
+
+        if (!res.ok) {
+          const raw = json?.message || "Failed to fetch NEO data";
+          const message = String(raw);
+          if (message.toLowerCase().includes("epic")) {
+            throw new Error(
+              "Backend route mismatch detected: /api/neo is returning EPIC responses. Restart/redeploy backend with latest code."
+            );
+          }
+          throw new Error(message);
+        }
+
+        if (!json?.near_earth_objects) {
+          throw new Error("Invalid NEO response format from backend.");
+        }
+
+        chunkPayloads.push(json);
+        cursor = addDays(chunkEnd, 1);
       }
-      if (!json?.near_earth_objects) {
-        throw new Error("Invalid NEO response format from backend.");
-      }
-      setData(json);
+
+      const merged = mergeNeoPayloads(chunkPayloads);
+      setData(merged);
       setActiveDate("");
       setActiveHazard("all");
     } catch (e) {
