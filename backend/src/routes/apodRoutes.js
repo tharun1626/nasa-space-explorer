@@ -1,12 +1,13 @@
 import express from "express";
 import axios from "axios";
+import { logger } from "../utils/logger.js";
 
 const router = express.Router();
 const BASE_TIMEOUT_MS = Number(process.env.NASA_TIMEOUT_MS || 30000);
 const RETRIES = Number(process.env.NASA_RETRIES || 2);
 const apodCache = new Map();
 
-async function nasaGetWithRetry(url, options = {}, retries = RETRIES) {
+async function nasaGetWithRetry(url, options = {}, retries = RETRIES, onRetry = null) {
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
@@ -20,7 +21,11 @@ async function nasaGetWithRetry(url, options = {}, retries = RETRIES) {
         error?.code === "ECONNABORTED" ||
         String(error?.message || "").toLowerCase().includes("timeout");
       if (!isTimeout || attempt === retries) break;
-      await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+      const delayMs = 350 * (attempt + 1);
+      if (typeof onRetry === "function") {
+        onRetry({ attempt: attempt + 1, retries, delayMs, error });
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
   throw lastError;
@@ -40,10 +45,23 @@ function cacheKey(params) {
   });
 }
 
+function fallbackPayload(cached, reason) {
+  if (Array.isArray(cached)) return cached;
+  return {
+    ...cached,
+    fallback: true,
+    fallback_reason: reason,
+  };
+}
+
 router.get("/", async (req, res) => {
   try {
     const { date, startDate, endDate, count, thumbs } = req.query;
     const apiKey = process.env.NASA_API_KEY || "DEMO_KEY";
+    logger.info("apod_request_received", {
+      requestId: req.requestId,
+      query: { date, startDate, endDate, count, thumbs },
+    });
 
     const singleDate = toIsoDate(date);
     const start = toIsoDate(startDate);
@@ -70,20 +88,72 @@ router.get("/", async (req, res) => {
     if (thumbs !== undefined) params.thumbs = String(thumbs).toLowerCase() === "true";
 
     const queryKey = cacheKey(params);
+    const safeParams = {
+      ...params,
+      api_key: apiKey === "DEMO_KEY" ? "DEMO_KEY" : "(hidden)",
+    };
+    logger.info("apod_upstream_request_started", {
+      requestId: req.requestId,
+      params: safeParams,
+      baseTimeoutMs: BASE_TIMEOUT_MS,
+      retries: RETRIES,
+    });
+
     const response = await nasaGetWithRetry("https://api.nasa.gov/planetary/apod", {
       params,
       validateStatus: () => true,
+    }, RETRIES, ({ attempt, retries, delayMs, error }) => {
+      logger.warn("apod_upstream_retry_scheduled", {
+        requestId: req.requestId,
+        attempt,
+        totalRetries: retries,
+        delayMs,
+        reason: error?.code || error?.message || "timeout",
+      });
     });
 
     if (response.status >= 400) {
+      const upstreamMsg = String(response.data?.msg || response.data?.error?.message || "").toLowerCase();
+      const canTryLatest = Boolean(singleDate) && response.status === 400 && upstreamMsg.includes("date must be between");
+      if (canTryLatest) {
+        logger.warn("apod_requested_date_unavailable_trying_latest", {
+          requestId: req.requestId,
+          requestedDate: singleDate,
+          nasaStatus: response.status,
+        });
+        const latestResponse = await nasaGetWithRetry("https://api.nasa.gov/planetary/apod", {
+          params: { api_key: apiKey, thumbs: params.thumbs },
+          validateStatus: () => true,
+        });
+        if (latestResponse.status < 400) {
+          apodCache.set("latest", latestResponse.data);
+          logger.info("apod_latest_fallback_succeeded", {
+            requestId: req.requestId,
+            requestedDate: singleDate,
+            fallbackDate: latestResponse.data?.date || null,
+          });
+          return res.json({
+            ...latestResponse.data,
+            fallback: true,
+            fallback_reason: `APOD is not yet available for ${singleDate}. Showing latest published entry.`,
+          });
+        }
+      }
+
       const cached = apodCache.get(queryKey) || apodCache.get("latest");
       if (cached) {
-        return res.json({
-          ...cached,
-          fallback: true,
-          fallback_reason: "Serving cached APOD due to upstream NASA failure.",
+        logger.warn("apod_fallback_cache_served", {
+          requestId: req.requestId,
+          nasaStatus: response.status,
+          cacheKey: queryKey,
         });
+        return res.json(fallbackPayload(cached, "Serving cached APOD due to upstream NASA failure."));
       }
+      logger.error("apod_upstream_failed_without_cache", {
+        requestId: req.requestId,
+        nasaStatus: response.status,
+        details: response.data,
+      });
       return res.status(response.status).json({
         message: response.data?.msg || "Failed to fetch APOD data",
         nasa_status: response.status,
@@ -95,6 +165,15 @@ router.get("/", async (req, res) => {
     if (!Array.isArray(response.data)) apodCache.set("latest", response.data);
 
     res.set("Cache-Control", "no-store");
+    logger.info("apod_request_succeeded", {
+      requestId: req.requestId,
+      nasaStatus: response.status,
+      resultCount: Array.isArray(response.data) ? response.data.length : 1,
+      date: singleDate || null,
+      startDate: start || null,
+      endDate: end || null,
+      fallback: false,
+    });
     return res.json(response.data);
   } catch (error) {
     const status = error.response?.status || 500;
@@ -103,15 +182,29 @@ router.get("/", async (req, res) => {
       String(error?.message || "").toLowerCase().includes("timeout");
     const cached = apodCache.get("latest");
     if (cached) {
-      return res.json({
-        ...cached,
-        fallback: true,
-        fallback_reason: isTimeout
-          ? "Serving cached APOD because NASA request timed out."
-          : "Serving cached APOD due to upstream NASA error.",
+      logger.warn("apod_error_fallback_cache_served", {
+        requestId: req.requestId,
+        nasaStatus: status,
+        timeout: isTimeout,
+        error: error?.message,
       });
+      return res.json(
+        fallbackPayload(
+          cached,
+          isTimeout
+            ? "Serving cached APOD because NASA request timed out."
+            : "Serving cached APOD due to upstream NASA error."
+        )
+      );
     }
 
+    logger.error("apod_request_failed", {
+      requestId: req.requestId,
+      nasaStatus: status,
+      timeout: isTimeout,
+      error: error?.message,
+      details: error.response?.data,
+    });
     return res.status(status).json({
       message: isTimeout
         ? "Failed to fetch APOD data (NASA timeout, please retry)"

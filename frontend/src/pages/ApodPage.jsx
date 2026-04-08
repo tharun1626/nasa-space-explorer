@@ -66,9 +66,9 @@ async function requestFromAnyBase(pathWithQuery) {
 export default function ApodPage() {
   const prevModeRef = useRef(null);
   const [mode, setMode] = useState("single");
-  const [date, setDate] = useState(getIsoOffset(0));
+  const [date, setDate] = useState(getIsoOffset(-1));
   const [startDate, setStartDate] = useState(getIsoOffset(-7));
-  const [endDate, setEndDate] = useState(getIsoOffset(0));
+  const [endDate, setEndDate] = useState(getIsoOffset(-1));
 
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
